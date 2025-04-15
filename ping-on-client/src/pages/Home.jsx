@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import './Home.css'
 
 const Home = ({ pid }) => {
   const [player, setPlayer] = useState('');
+  const [matchCode, setMatchCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [ws, setWs] = useState(null);
-  const [matchStatus, setMatchStatus] = useState('');
+  const navigate = useNavigate();
 
   const checkName = () => {
     if (player.trim() === '') {
@@ -14,18 +17,53 @@ const Home = ({ pid }) => {
     return true;
   };
 
-  const handleOnlineMatchmaking = (e) => {
+  const handleCreateMatch = (e) => {
     e.preventDefault();
-
     if (!checkName()) return;
-
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       alert("WebSocket is not connected yet.");
       return;
     }
-
     setLoading(true);
+    ws.send(
+      JSON.stringify({
+        type: 'create',
+        pid,
+        playerName: player
+      })
+    );
+  };
 
+  const handleJoinMatch = (e) => {
+    e.preventDefault();
+    if (!checkName()) return;
+    if (!matchCode.trim()) {
+      alert("Please enter a match code to join.");
+      return;
+    }
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      alert("WebSocket is not connected yet.");
+      return;
+    }
+    setLoading(true);
+    ws.send(
+      JSON.stringify({
+        type: 'join',
+        pid,
+        playerName: player,
+        matchId: matchCode.trim()
+      })
+    );
+  };
+
+  const handleOnlineMatchmaking = (e) => {
+    e.preventDefault();
+    if (!checkName()) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      alert("WebSocket is not connected yet.");
+      return;
+    }
+    setLoading(true);
     ws.send(
       JSON.stringify({
         type: 'matchmaking',
@@ -37,60 +75,83 @@ const Home = ({ pid }) => {
 
   useEffect(() => {
     const socket = new WebSocket('ws://localhost:8080');
-
     socket.onopen = () => {
       console.log('✅ Connected to matchmaking server');
     };
 
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      console.log('📨 Message from matchmaking server:', data);
 
-      console.log('📨 Message from server:', data);
-
-      if (data.type === 'found') {
-        setMatchStatus(`✅ Matched with ${data.opponent}!`);
+      if (data.type === 'created') {
         setLoading(false);
-        // TODO: navigate to game or store match data
+        alert(`Match created. Your match code is: ${data.matchId}`);
+      } else if (data.type === 'found') {
+        setLoading(false);
+        navigate("/game", { state: { 
+          opponent: data.opponent, 
+          playerName: player,
+          matchId: data.matchId,
+          player: data.player
+        }});
       } else if (data.type === 'not_found') {
-        setMatchStatus(`❌ No match found. Try again later.`);
+        console.error('WebSocket error:', err);
+        alert(data.message || "No match found. Try again later.");
         setLoading(false);
       }
     };
 
     socket.onerror = (err) => {
       console.error('WebSocket error:', err);
-      alert('Failed to connect to matchmaking server.');
-      setLoading(false);
+      // alert('Failed to connect to matchmaking server.');
+      // setLoading(false);
     };
 
     setWs(socket);
 
     return () => {
       socket.close();
-      console.log('🔌 WebSocket connection closed');
+      console.log('🔌 WebSocket connection to matchmaking closed');
     };
-  }, []);
+  }, [navigate, player]);
 
   return (
-    <div>
-      <div className='text-xl color-blue'>name: </div>
+    <div className='container'>
       <input
+        className='nameBox'
         type='text'
         value={player}
         onChange={e => setPlayer(e.target.value)}
+        placeholder='Name'
       />
-      <br />
-      <button>create match</button>
-      <p>or</p>
-      <input type='number' name='roomId' id='roomId' placeholder='enter room id' />
-      <br />
-      <button>join match</button>
-      <p>or</p>
-      <button onClick={handleOnlineMatchmaking}>online matchmaking</button>
+
+      <hr />
+
+      <button className='createBtn' onClick={handleCreateMatch}>
+        Create Match
+      </button>
+
+      <p className='msg1'>OR</p>
+
+      <input
+        className='codeBox'
+        type='text'
+        value={matchCode}
+        onChange={e => setMatchCode(e.target.value)}
+        placeholder='Match Code'
+      />
+
+      <button className='joinBtn' onClick={handleJoinMatch}>
+        Join Match
+      </button>
+
+      <p className='msg2'>OR</p>
+
+      <button className='matchmakingBtn' onClick={handleOnlineMatchmaking}>
+        Online Matchmaking
+      </button>
 
       {loading && <h1>L O A D I N G . . .</h1>}
-
-      {matchStatus && <p>{matchStatus}</p>}
     </div>
   );
 };
